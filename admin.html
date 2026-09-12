@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESDOC - Administracion</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar" id="topbar"></div>
+<div class="container">
+  <h2>Administracion</h2>
+  <div class="tabs">
+    <button class="active" data-tab="users">Usuarios y roles</button>
+    <button data-tab="teams">Equipos por proyecto</button>
+    <button data-tab="status">Codigos de estado</button>
+  </div>
+
+  <div id="tab-users">
+    <div class="card">
+      <h3>Usuarios registrados</h3>
+      <div class="hint" style="margin-bottom:10px;">
+        Para dar de alta un usuario nuevo: Supabase Dashboard &gt; Authentication &gt; Users &gt; Add user.
+        Aparecera aqui automaticamente con rol VIEWER; cambia su rol abajo.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Email</th><th>Nombre</th><th>Rol</th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-teams" hidden>
+    <div class="card">
+      <h3>Miembros por proyecto</h3>
+      <label>Proyecto</label>
+      <select id="teamProjectSelect"></select>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
+          <thead><tr><th>Email</th><th>Rol global</th><th></th></tr></thead>
+          <tbody id="teamMembersBody"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:14px;align-items:flex-end;">
+        <div><label>Anadir usuario</label><select id="addMemberSelect"></select></div>
+        <div style="flex:0;"><button class="btn primary" id="addMemberBtn" style="margin-top:4px;">Anadir</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-status" hidden>
+    <div class="card">
+      <h3>Codigos de estado</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Codigo</th><th>Descripcion</th><th>Categoria</th><th>Color</th><th></th></tr></thead>
+          <tbody id="statusBody"></tbody>
+        </table>
+      </div>
+      <h3 style="margin-top:20px;">Nuevo codigo</h3>
+      <form id="newStatusForm" class="row" style="align-items:flex-end;">
+        <div><label>Codigo *</label><input name="code" required maxlength="8" style="width:90px;"></div>
+        <div style="flex:2;"><label>Descripcion *</label><input name="description" required></div>
+        <div><label>Categoria</label>
+          <select name="category">
+            <option value="APROBADO">Aprobado</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="INFORMACION">Informacion</option>
+            <option value="RECHAZADO">Rechazado</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+        <div><label>Color</label><input type="color" name="color" value="#6b7280" style="width:60px;padding:2px;"></div>
+        <div><button type="submit" class="btn primary">Anadir</button></div>
+      </form>
+      <div class="error-msg" id="statusErr" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import './js/pwa.js';
+import { supabase } from './js/db.js';
+import { requireSession, getProfile, renderTopbar } from './js/auth.js';
+import { escapeHtml } from './js/utils.js';
+
+await requireSession();
+const profile = await getProfile();
+renderTopbar(profile, 'admin');
+
+if (!profile || profile.role !== 'ADMIN') {
+  document.querySelector('.container').innerHTML = '<div class="card">Acceso restringido a administradores.</div>';
+  throw new Error('not admin');
+}
+
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['users', 'teams', 'status'].forEach(t => document.getElementById('tab-' + t).hidden = (t !== btn.dataset.tab));
+  });
+});
+
+// ---------------- USUARIOS ----------------
+let allProfiles = [];
+async function loadUsers() {
+  const { data } = await supabase.from('profiles').select('*').order('email');
+  allProfiles = data || [];
+  document.getElementById('usersBody').innerHTML = allProfiles.map(p => `
+    <tr>
+      <td>${escapeHtml(p.email || '-')}</td>
+      <td>${escapeHtml(p.full_name || '-')}</td>
+      <td>
+        <select data-user="${p.id}" class="roleSelect" style="width:140px;">
+          <option value="VIEWER" ${p.role === 'VIEWER' ? 'selected' : ''}>VIEWER</option>
+          <option value="EDITOR" ${p.role === 'EDITOR' ? 'selected' : ''}>EDITOR</option>
+          <option value="ADMIN" ${p.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
+        </select>
+      </td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('.roleSelect').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      await supabase.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.user);
+      await loadUsers();
+      await loadTeamMembers();
+    });
+  });
+}
+await loadUsers();
+
+// ---------------- EQUIPOS POR PROYECTO ----------------
+let allProjects = [];
+async function loadProjectsForTeams() {
+  const { data } = await supabase.from('projects').select('*').order('name');
+  allProjects = data || [];
+  document.getElementById('teamProjectSelect').innerHTML = allProjects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+}
+await loadProjectsForTeams();
+
+async function loadTeamMembers() {
+  const projectId = document.getElementById('teamProjectSelect').value;
+  if (!projectId) return;
+  const { data: members } = await supabase
+    .from('project_members')
+    .select('user_id, profiles(email, role)')
+    .eq('project_id', projectId);
+
+  document.getElementById('teamMembersBody').innerHTML = (members || []).map(m => `
+    <tr>
+      <td>${escapeHtml(m.profiles?.email || '-')}</td>
+      <td>${escapeHtml(m.profiles?.role || '-')}</td>
+      <td><button class="btn small danger" data-remove="${m.user_id}">Quitar</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" class="empty">Sin miembros</td></tr>';
+
+  const memberIds = new Set((members || []).map(m => m.user_id));
+  const candidates = allProfiles.filter(p => !memberIds.has(p.id));
+  document.getElementById('addMemberSelect').innerHTML = candidates.map(p => `<option value="${p.id}">${escapeHtml(p.email)}</option>`).join('');
+
+  document.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await supabase.from('project_members').delete().eq('project_id', projectId).eq('user_id', btn.dataset.remove);
+      await loadTeamMembers();
+    });
+  });
+}
+document.getElementById('teamProjectSelect').addEventListener('change', loadTeamMembers);
+if (allProjects.length) await loadTeamMembers();
+
+document.getElementById('addMemberBtn').addEventListener('click', async () => {
+  const projectId = document.getElementById('teamProjectSelect').value;
+  const userId = document.getElementById('addMemberSelect').value;
+  if (!projectId || !userId) return;
+  await supabase.from('project_members').insert({ project_id: projectId, user_id: userId });
+  await loadTeamMembers();
+});
+
+// ---------------- CODIGOS DE ESTADO ----------------
+async function loadStatusCodes() {
+  const { data } = await supabase.from('status_codes').select('*').order('code');
+  document.getElementById('statusBody').innerHTML = (data || []).map(s => `
+    <tr>
+      <td><strong>${escapeHtml(s.code)}</strong></td>
+      <td>${escapeHtml(s.description)}</td>
+      <td>${escapeHtml(s.category)}</td>
+      <td><span class="badge" style="background:${s.color}">&nbsp;&nbsp;&nbsp;</span></td>
+      <td><button class="btn small danger" data-del-status="${s.code}">Eliminar</button></td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-del-status]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await supabase.from('status_codes').delete().eq('code', btn.dataset.delStatus);
+      await loadStatusCodes();
+    });
+  });
+}
+await loadStatusCodes();
+
+document.getElementById('newStatusForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  payload.code = payload.code.toUpperCase();
+  const { error } = await supabase.from('status_codes').insert(payload);
+  const errEl = document.getElementById('statusErr');
+  if (error) { errEl.textContent = error.message; errEl.hidden = false; return; }
+  errEl.hidden = true;
+  e.target.reset();
+  await loadStatusCodes();
+});
+</script>
+</body>
+</html>

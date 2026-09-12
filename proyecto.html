@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESDOC - Proyecto</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar" id="topbar"></div>
+<div class="container">
+  <div class="toolbar">
+    <div>
+      <h2 style="margin:0;" id="projTitle">Cargando...</h2>
+      <div class="muted" id="projSub"></div>
+    </div>
+    <a href="dashboard.html" class="btn">&larr; Proyectos</a>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-tab="docs">Documentos</button>
+    <button data-tab="trans">Transmittals</button>
+  </div>
+
+  <div id="tab-docs">
+    <div class="toolbar">
+      <input type="search" class="search" id="docSearch" placeholder="Buscar documento...">
+      <button class="btn primary" id="newDocBtn" hidden>+ Nuevo documento</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Client Doc Nº</th><th>Vendor Doc Nº</th><th>Titulo</th><th>Tag/Item</th>
+          <th>Entrega</th><th>Rev.</th><th>Estado</th><th>Alerta</th><th></th>
+        </tr></thead>
+        <tbody id="docsBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="docsEmpty" hidden>No hay documentos todavia.</div>
+  </div>
+
+  <div id="tab-trans" hidden>
+    <div class="toolbar">
+      <h3 style="margin:0;">Transmittals del proyecto</h3>
+      <button class="btn primary" id="newTransBtn" hidden>+ Nuevo transmittal</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nº</th><th>Direccion</th><th>Fecha</th><th>Contraparte</th><th>Documentos</th><th></th></tr></thead>
+        <tbody id="transBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="transEmpty" hidden>No hay transmittals todavia.</div>
+  </div>
+</div>
+
+<!-- Modal: nuevo/editar documento -->
+<div class="modal-backdrop" id="docModal" hidden>
+  <div class="modal">
+    <h2 id="docModalTitle">Nuevo documento</h2>
+    <form id="docForm">
+      <input type="hidden" name="id">
+      <div class="row">
+        <div><label>Client Doc Nº</label><input name="client_doc_no"></div>
+        <div><label>Vendor Doc Nº</label><input name="vendor_doc_no"></div>
+      </div>
+      <label>Titulo / Descripcion *</label>
+      <input name="title" required>
+      <div class="row">
+        <div><label>Tag Nº / Item</label><input name="tag_no"></div>
+        <div><label>Modelo</label><input name="model"></div>
+      </div>
+      <div class="row">
+        <div><label>Fecha de entrega prevista</label><input type="date" name="delivery_date"></div>
+        <div><label>Revision actual</label><input type="number" name="current_revision" value="0" min="0"></div>
+      </div>
+      <label>Estado actual</label>
+      <select name="current_status" id="docStatusSelect"><option value="">-</option></select>
+      <div class="error-msg" id="docErr" hidden></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+        <button type="button" class="btn" id="cancelDocModal">Cancelar</button>
+        <button type="submit" class="btn primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: historial / registrar evento de un documento -->
+<div class="modal-backdrop" id="historyModal" hidden>
+  <div class="modal">
+    <h2>Historial - <span id="historyDocTitle"></span></h2>
+    <div class="table-wrap" style="margin-bottom:16px;">
+      <table>
+        <thead><tr><th>Tipo</th><th>Fecha</th><th>Rev.</th><th>Estado</th><th>Notas</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+    <div id="addEventBlock" hidden>
+      <h3>Registrar evento</h3>
+      <form id="eventForm">
+        <input type="hidden" name="document_id">
+        <div class="row">
+          <div><label>Tipo</label>
+            <select name="event_type"><option value="ENVIADO">Enviado</option><option value="RECIBIDO">Recibido</option></select>
+          </div>
+          <div><label>Fecha</label><input type="date" name="event_date" required></div>
+        </div>
+        <div class="row">
+          <div><label>Revision</label><input type="number" name="revision" min="0" required></div>
+          <div><label>Estado</label><select name="status" id="eventStatusSelect"><option value="">-</option></select></div>
+        </div>
+        <label>Notas</label>
+        <textarea name="notes" rows="2"></textarea>
+        <div class="error-msg" id="eventErr" hidden></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+          <button type="submit" class="btn primary">Anadir evento</button>
+        </div>
+      </form>
+    </div>
+    <div style="text-align:right;margin-top:10px;">
+      <button type="button" class="btn" id="closeHistory">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: nuevo transmittal -->
+<div class="modal-backdrop" id="transModal" hidden>
+  <div class="modal" style="max-width:760px;">
+    <h2>Nuevo transmittal</h2>
+    <form id="transForm">
+      <div class="row">
+        <div><label>Direccion</label>
+          <select name="direction" id="transDirection">
+            <option value="ENVIADO">Enviado (nosotros &rarr; cliente/vendor)</option>
+            <option value="RECIBIDO">Recibido (cliente/vendor &rarr; nosotros)</option>
+          </select>
+        </div>
+        <div><label>Nº de transmittal *</label><input name="transmittal_no" required></div>
+      </div>
+      <div class="row">
+        <div><label>Fecha *</label><input type="date" name="transmittal_date" required></div>
+        <div><label>Contraparte</label><input name="counterparty" placeholder="Cliente / Proveedor"></div>
+      </div>
+      <label>Notas</label>
+      <textarea name="notes" rows="2"></textarea>
+
+      <h3 style="margin-top:16px;">Documentos incluidos</h3>
+      <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
+        <table>
+          <thead><tr><th></th><th>Documento</th><th>Rev.</th><th>Estado</th></tr></thead>
+          <tbody id="transDocsBody"></tbody>
+        </table>
+      </div>
+      <div class="error-msg" id="transErr" hidden></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+        <button type="button" class="btn" id="cancelTransModal">Cancelar</button>
+        <button type="submit" class="btn primary">Crear transmittal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import './js/pwa.js';
+import { supabase } from './js/db.js';
+import { requireSession, getProfile, renderTopbar } from './js/auth.js';
+import { fmtDate, todayISO, computeAlert, statusBadge, escapeHtml } from './js/utils.js';
+
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('id');
+if (!projectId) window.location.href = 'dashboard.html';
+
+const session = await requireSession();
+const profile = await getProfile();
+renderTopbar(profile, 'dashboard');
+const canEdit = profile && (profile.role === 'ADMIN' || profile.role === 'EDITOR');
+const isAdmin = profile && profile.role === 'ADMIN';
+
+const { data: project, error: projErr } = await supabase.from('projects').select('*').eq('id', projectId).single();
+if (projErr || !project) {
+  document.getElementById('projTitle').textContent = 'Proyecto no encontrado o sin acceso';
+} else {
+  document.getElementById('projTitle').textContent = project.name;
+  document.getElementById('projSub').textContent = [project.client, project.po_number ? 'PO ' + project.po_number : '', project.plant_location].filter(Boolean).join(' · ');
+}
+
+const { data: statusRows } = await supabase.from('status_codes').select('*').order('code');
+const statusMap = {};
+(statusRows || []).forEach(s => statusMap[s.code] = s);
+function buildStatusOptions(selected) {
+  const opts = ['<option value="">-</option>'].concat((statusRows || []).map(s =>
+    `<option value="${s.code}"${s.code === selected ? ' selected' : ''}>${s.code} - ${escapeHtml(s.description)}</option>`
+  ));
+  return opts.join('');
+}
+const statusOptionsHtml = buildStatusOptions(null);
+document.getElementById('docStatusSelect').innerHTML = statusOptionsHtml;
+document.getElementById('eventStatusSelect').innerHTML = statusOptionsHtml;
+
+if (canEdit) {
+  document.getElementById('newDocBtn').hidden = false;
+  document.getElementById('newTransBtn').hidden = false;
+}
+
+// ---------------- TABS ----------------
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-docs').hidden = btn.dataset.tab !== 'docs';
+    document.getElementById('tab-trans').hidden = btn.dataset.tab !== 'trans';
+  });
+});
+
+// ---------------- DOCUMENTOS ----------------
+let allDocs = [];
+
+async function loadDocuments() {
+  const { data, error } = await supabase
+    .from('document_status')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) { console.error(error); return; }
+  allDocs = data || [];
+  renderDocs(allDocs);
+}
+
+function renderDocs(docs) {
+  const body = document.getElementById('docsBody');
+  document.getElementById('docsEmpty').hidden = docs.length > 0;
+  body.innerHTML = docs.map(doc => {
+    const lastEvent = doc.last_event_type
+      ? { event_type: doc.last_event_type, event_date: doc.last_event_date, status: doc.last_event_status }
+      : null;
+    const alert = computeAlert(doc, lastEvent, statusMap, project?.review_days || 15);
+    const rowClass = alert.level === 'danger' ? 'row-danger' : alert.level === 'warn' ? 'row-warn' : '';
+    const alertColor = alert.level === 'danger' ? '#dc2626' : alert.level === 'warn' ? '#d97706' : '#16a34a';
+    return `
+      <tr class="${rowClass}" data-id="${doc.id}">
+        <td>${escapeHtml(doc.client_doc_no || '-')}</td>
+        <td>${escapeHtml(doc.vendor_doc_no || '-')}</td>
+        <td>${escapeHtml(doc.title)}</td>
+        <td>${escapeHtml(doc.tag_no || '-')}</td>
+        <td>${fmtDate(doc.delivery_date)}</td>
+        <td>${doc.current_revision}</td>
+        <td>${statusBadge(doc.current_status, statusMap)}</td>
+        <td><span style="color:${alertColor};font-size:12px;font-weight:600;">${escapeHtml(alert.reason)}</span></td>
+        <td style="white-space:nowrap;">
+          <button class="btn small" data-action="history" data-id="${doc.id}">Historial</button>
+          ${canEdit ? `<button class="btn small" data-action="edit" data-id="${doc.id}">Editar</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+document.getElementById('docSearch').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  renderDocs(allDocs.filter(d =>
+    (d.title || '').toLowerCase().includes(q) ||
+    (d.client_doc_no || '').toLowerCase().includes(q) ||
+    (d.vendor_doc_no || '').toLowerCase().includes(q) ||
+    (d.tag_no || '').toLowerCase().includes(q)
+  ));
+});
+
+document.getElementById('docsBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const doc = allDocs.find(d => d.id === btn.dataset.id);
+  if (btn.dataset.action === 'edit') openDocModal(doc);
+  if (btn.dataset.action === 'history') openHistoryModal(doc);
+});
+
+// --- crear/editar documento ---
+const docModal = document.getElementById('docModal');
+document.getElementById('newDocBtn').addEventListener('click', () => openDocModal(null));
+document.getElementById('cancelDocModal').addEventListener('click', () => docModal.hidden = true);
+
+function openDocModal(doc) {
+  document.getElementById('docModalTitle').textContent = doc ? 'Editar documento' : 'Nuevo documento';
+  const form = document.getElementById('docForm');
+  form.reset();
+  form.id.value = doc ? doc.id : '';
+  if (doc) {
+    form.client_doc_no.value = doc.client_doc_no || '';
+    form.vendor_doc_no.value = doc.vendor_doc_no || '';
+    form.title.value = doc.title || '';
+    form.tag_no.value = doc.tag_no || '';
+    form.model.value = doc.model || '';
+    form.delivery_date.value = doc.delivery_date || '';
+    form.current_revision.value = doc.current_revision ?? 0;
+    form.current_status.value = doc.current_status || '';
+  }
+  document.getElementById('docErr').hidden = true;
+  docModal.hidden = false;
+}
+
+document.getElementById('docForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  const id = payload.id;
+  delete payload.id;
+  payload.current_revision = parseInt(payload.current_revision || '0', 10);
+  payload.delivery_date = payload.delivery_date || null;
+  payload.current_status = payload.current_status || null;
+  payload.project_id = projectId;
+
+  const query = id
+    ? supabase.from('documents').update(payload).eq('id', id)
+    : supabase.from('documents').insert(payload);
+  const { error } = await query;
+  const errEl = document.getElementById('docErr');
+  if (error) { errEl.textContent = error.message; errEl.hidden = false; return; }
+  docModal.hidden = true;
+  await loadDocuments();
+});
+
+// --- historial / eventos ---
+const historyModal = document.getElementById('historyModal');
+document.getElementById('closeHistory').addEventListener('click', () => historyModal.hidden = true);
+let historyDocId = null;
+
+async function openHistoryModal(doc) {
+  historyDocId = doc.id;
+  document.getElementById('historyDocTitle').textContent = doc.title;
+  const { data: events } = await supabase
+    .from('document_events')
+    .select('*')
+    .eq('document_id', doc.id)
+    .order('event_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  document.getElementById('historyBody').innerHTML = (events || []).length
+    ? events.map(ev => `
+        <tr>
+          <td>${ev.event_type === 'ENVIADO' ? 'Enviado' : 'Recibido'}</td>
+          <td>${fmtDate(ev.event_date)}</td>
+          <td>${ev.revision}</td>
+          <td>${statusBadge(ev.status, statusMap)}</td>
+          <td>${escapeHtml(ev.notes || '')}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Sin eventos registrados</td></tr>';
+
+  document.getElementById('addEventBlock').hidden = !canEdit;
+  if (canEdit) {
+    const form = document.getElementById('eventForm');
+    form.reset();
+    form.document_id.value = doc.id;
+    form.event_date.value = todayISO();
+    form.revision.value = doc.current_revision ?? 0;
+    document.getElementById('eventErr').hidden = true;
+  }
+  historyModal.hidden = false;
+}
+
+document.getElementById('eventForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  payload.revision = parseInt(payload.revision, 10);
+  payload.status = payload.status || null;
+
+  const { error } = await supabase.from('document_events').insert(payload);
+  const errEl = document.getElementById('eventErr');
+  if (error) { errEl.textContent = error.message; errEl.hidden = false; return; }
+
+  // Reflejar el evento como estado actual del documento
+  await supabase.from('documents').update({
+    current_revision: payload.revision,
+    current_status: payload.status
+  }).eq('id', historyDocId);
+
+  historyModal.hidden = true;
+  await loadDocuments();
+});
+
+await loadDocuments();
+
+// ---------------- TRANSMITTALS ----------------
+async function loadTransmittals() {
+  const { data: transmittals } = await supabase
+    .from('transmittals')
+    .select('*, transmittal_items(count)')
+    .eq('project_id', projectId)
+    .order('transmittal_date', { ascending: false });
+  const body = document.getElementById('transBody');
+  document.getElementById('transEmpty').hidden = (transmittals || []).length > 0;
+  body.innerHTML = (transmittals || []).map(t => `
+    <tr>
+      <td>${escapeHtml(t.transmittal_no)}</td>
+      <td>${t.direction === 'ENVIADO' ? 'Enviado' : 'Recibido'}</td>
+      <td>${fmtDate(t.transmittal_date)}</td>
+      <td>${escapeHtml(t.counterparty || '-')}</td>
+      <td>${t.transmittal_items?.[0]?.count ?? 0}</td>
+      <td><a class="btn small" href="transmittal-imprimir.html?id=${t.id}" target="_blank">Ver / Imprimir</a></td>
+    </tr>
+  `).join('');
+}
+await loadTransmittals();
+
+const transModal = document.getElementById('transModal');
+document.getElementById('newTransBtn').addEventListener('click', () => {
+  const form = document.getElementById('transForm');
+  form.reset();
+  form.transmittal_date.value = todayISO();
+  document.getElementById('transDocsBody').innerHTML = allDocs.map(doc => `
+    <tr>
+      <td><input type="checkbox" data-doc="${doc.id}" class="transDocCheck"></td>
+      <td>${escapeHtml(doc.title)} <span class="muted">(${escapeHtml(doc.client_doc_no || doc.vendor_doc_no || '')})</span></td>
+      <td><input type="number" min="0" value="${doc.current_revision}" data-rev="${doc.id}" style="width:70px;"></td>
+      <td>
+        <select data-status="${doc.id}">${buildStatusOptions(doc.current_status)}</select>
+      </td>
+    </tr>
+  `).join('');
+  document.getElementById('transErr').hidden = true;
+  transModal.hidden = false;
+});
+document.getElementById('cancelTransModal').addEventListener('click', () => transModal.hidden = true);
+
+document.getElementById('transForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  payload.project_id = projectId;
+  payload.created_by = session.user.id;
+
+  const checks = Array.from(document.querySelectorAll('.transDocCheck:checked'));
+  const errEl = document.getElementById('transErr');
+  if (checks.length === 0) {
+    errEl.textContent = 'Selecciona al menos un documento.';
+    errEl.hidden = false;
+    return;
+  }
+
+  const { data: newTrans, error } = await supabase.from('transmittals').insert(payload).select().single();
+  if (error) { errEl.textContent = error.message; errEl.hidden = false; return; }
+
+  const eventType = payload.direction;
+  for (const chk of checks) {
+    const docId = chk.dataset.doc;
+    const revision = parseInt(document.querySelector(`[data-rev="${docId}"]`).value, 10);
+    const status = document.querySelector(`[data-status="${docId}"]`).value || null;
+
+    await supabase.from('transmittal_items').insert({ transmittal_id: newTrans.id, document_id: docId, revision, status });
+    await supabase.from('document_events').insert({
+      document_id: docId, event_type: eventType, revision, status,
+      event_date: payload.transmittal_date, transmittal_id: newTrans.id
+    });
+    await supabase.from('documents').update({ current_revision: revision, current_status: status }).eq('id', docId);
+  }
+
+  transModal.hidden = true;
+  await loadDocuments();
+  await loadTransmittals();
+  window.location.href = `transmittal-imprimir.html?id=${newTrans.id}`;
+});
+</script>
+</body>
+</html>

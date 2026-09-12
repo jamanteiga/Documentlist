@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESDOC - Transmittal</title>
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .sheet{background:#fff;max-width:900px;margin:20px auto;padding:30px;border:1px solid var(--border);border-radius:10px;}
+  .sheet h1{font-size:20px;margin:0 0 4px;}
+  .sheet .meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin:16px 0 20px;}
+  .sheet .meta div span{color:var(--text-muted);}
+  @media print{.sheet{border:none;margin:0;max-width:100%;}}
+</style>
+</head>
+<body>
+<div class="topbar no-print" id="topbar"></div>
+<div class="container no-print" style="max-width:900px;padding-top:14px;">
+  <button class="btn primary" onclick="window.print()">Imprimir / Guardar PDF</button>
+  <a class="btn" id="backLink" href="dashboard.html">&larr; Volver al proyecto</a>
+</div>
+
+<div class="sheet" id="sheet">Cargando...</div>
+
+<script type="module">
+import { supabase } from './js/db.js';
+import { requireSession, getProfile, renderTopbar } from './js/auth.js';
+import { fmtDate, statusBadge, escapeHtml } from './js/utils.js';
+
+await requireSession();
+const profile = await getProfile();
+renderTopbar(profile, null);
+
+const params = new URLSearchParams(window.location.search);
+const transId = params.get('id');
+
+const { data: statusRows } = await supabase.from('status_codes').select('*');
+const statusMap = {};
+(statusRows || []).forEach(s => statusMap[s.code] = s);
+
+const { data: trans, error } = await supabase.from('transmittals').select('*, projects(*)').eq('id', transId).single();
+if (error || !trans) {
+  document.getElementById('sheet').textContent = 'Transmittal no encontrado o sin acceso.';
+} else {
+  document.getElementById('backLink').href = `proyecto.html?id=${trans.project_id}`;
+
+  const { data: items } = await supabase
+    .from('transmittal_items')
+    .select('*, documents(*)')
+    .eq('transmittal_id', transId);
+
+  const proj = trans.projects;
+  document.getElementById('sheet').innerHTML = `
+    <h1>TRANSMITTAL Nº ${escapeHtml(trans.transmittal_no)}</h1>
+    <div class="muted">${trans.direction === 'ENVIADO' ? 'ENVIADO' : 'RECIBIDO'} · ${fmtDate(trans.transmittal_date)}</div>
+    <div class="meta">
+      <div><span>Proyecto: </span>${escapeHtml(proj?.name || '')}</div>
+      <div><span>Cliente: </span>${escapeHtml(proj?.client || '')}</div>
+      <div><span>P.O.: </span>${escapeHtml(proj?.po_number || '-')}</div>
+      <div><span>Contraparte: </span>${escapeHtml(trans.counterparty || '-')}</div>
+      <div style="grid-column:1/-1;"><span>Notas: </span>${escapeHtml(trans.notes || '-')}</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Client Doc Nº</th><th>Vendor Doc Nº</th><th>Titulo</th><th>Rev.</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${(items || []).map(it => `
+            <tr>
+              <td>${escapeHtml(it.documents?.client_doc_no || '-')}</td>
+              <td>${escapeHtml(it.documents?.vendor_doc_no || '-')}</td>
+              <td>${escapeHtml(it.documents?.title || '-')}</td>
+              <td>${it.revision}</td>
+              <td>${statusBadge(it.status, statusMap)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

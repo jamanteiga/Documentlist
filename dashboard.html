@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESDOC - Proyectos</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar" id="topbar"></div>
+<div class="container">
+
+  <div class="grid cols-4" id="globalStats"></div>
+
+  <div class="card" id="alertsCard" hidden>
+    <h2>Documentos que requieren atencion (todos los proyectos)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Proyecto</th><th>Doc.</th><th>Titulo</th><th>Rev.</th><th>Estado</th><th>Motivo</th>
+        </tr></thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <h2 style="margin:0;">Proyectos</h2>
+    <button class="btn primary" id="newProjectBtn" hidden>+ Nuevo proyecto</button>
+  </div>
+  <div class="grid cols-3" id="projectsGrid"></div>
+  <div class="empty" id="emptyMsg" hidden>No tienes proyectos asignados todavia.</div>
+</div>
+
+<div class="modal-backdrop" id="newProjectModal" hidden>
+  <div class="modal">
+    <h2>Nuevo proyecto</h2>
+    <form id="newProjectForm">
+      <div class="row">
+        <div><label>Nombre *</label><input name="name" required></div>
+        <div><label>Cliente</label><input name="client"></div>
+      </div>
+      <div class="row">
+        <div><label>Nº de pedido (P.O.)</label><input name="po_number"></div>
+        <div><label>Modelo</label><input name="model"></div>
+      </div>
+      <div class="row">
+        <div><label>Planta / Ubicacion</label><input name="plant_location"></div>
+        <div><label>Plazo revision (dias)</label><input name="review_days" type="number" value="15" min="1"></div>
+      </div>
+      <label>Identificacion del proyecto</label>
+      <input name="project_identification">
+      <div class="error-msg" id="newProjectErr" hidden></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+        <button type="button" class="btn" id="cancelNewProject">Cancelar</button>
+        <button type="submit" class="btn primary">Crear</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import './js/pwa.js';
+import { supabase } from './js/db.js';
+import { requireSession, getProfile, renderTopbar } from './js/auth.js';
+import { computeAlert, escapeHtml } from './js/utils.js';
+
+const session = await requireSession();
+if (session) {
+  const profile = await getProfile();
+  renderTopbar(profile, 'dashboard');
+  const canEdit = profile && (profile.role === 'ADMIN' || profile.role === 'EDITOR');
+  if (canEdit) document.getElementById('newProjectBtn').hidden = false;
+
+  // --- status codes ---
+  const { data: statusRows } = await supabase.from('status_codes').select('*');
+  const statusMap = {};
+  (statusRows || []).forEach(s => statusMap[s.code] = s);
+
+  // --- proyectos ---
+  const { data: projects, error: pErr } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('status', 'ACTIVO')
+    .order('created_at', { ascending: false });
+
+  if (pErr) console.error(pErr);
+
+  if (!projects || projects.length === 0) {
+    document.getElementById('emptyMsg').hidden = false;
+  }
+
+  let totalDocs = 0, totalWarn = 0, totalDanger = 0;
+  const allAlerts = [];
+  const grid = document.getElementById('projectsGrid');
+
+  for (const proj of (projects || [])) {
+    const { data: docs } = await supabase
+      .from('document_status')
+      .select('*')
+      .eq('project_id', proj.id);
+
+    let pWarn = 0, pDanger = 0;
+    (docs || []).forEach(doc => {
+      totalDocs++;
+      const lastEvent = doc.last_event_type
+        ? { event_type: doc.last_event_type, event_date: doc.last_event_date, status: doc.last_event_status }
+        : null;
+      const alert = computeAlert(doc, lastEvent, statusMap, proj.review_days || 15);
+      if (alert.level === 'warn') { pWarn++; totalWarn++; }
+      if (alert.level === 'danger') {
+        pDanger++; totalDanger++;
+        allAlerts.push({ project: proj, doc, alert });
+      } else if (alert.level === 'warn') {
+        allAlerts.push({ project: proj, doc, alert });
+      }
+    });
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cursor = 'pointer';
+    card.innerHTML = `
+      <h2>${escapeHtml(proj.name)}</h2>
+      <div class="muted" style="margin-bottom:10px;">${escapeHtml(proj.client || '')} ${proj.po_number ? '· PO ' + escapeHtml(proj.po_number) : ''}</div>
+      <div style="display:flex;gap:16px;">
+        <div><div style="font-size:20px;font-weight:700;">${(docs || []).length}</div><div class="muted" style="font-size:11px;">documentos</div></div>
+        <div><div style="font-size:20px;font-weight:700;color:${pWarn ? '#d97706' : '#9ca3af'};">${pWarn}</div><div class="muted" style="font-size:11px;">pendientes</div></div>
+        <div><div style="font-size:20px;font-weight:700;color:${pDanger ? '#dc2626' : '#9ca3af'};">${pDanger}</div><div class="muted" style="font-size:11px;">retrasados</div></div>
+      </div>
+    `;
+    card.addEventListener('click', () => window.location.href = `proyecto.html?id=${proj.id}`);
+    grid.appendChild(card);
+  }
+
+  // stats globales
+  document.getElementById('globalStats').innerHTML = `
+    <div class="stat"><div class="n">${(projects || []).length}</div><div class="label">Proyectos activos</div></div>
+    <div class="stat"><div class="n">${totalDocs}</div><div class="label">Documentos totales</div></div>
+    <div class="stat warn"><div class="n">${totalWarn}</div><div class="label">Pendientes de respuesta</div></div>
+    <div class="stat danger"><div class="n">${totalDanger}</div><div class="label">Retrasados</div></div>
+  `;
+
+  if (allAlerts.length) {
+    allAlerts.sort((a, b) => (a.alert.level === b.alert.level ? 0 : a.alert.level === 'danger' ? -1 : 1));
+    document.getElementById('alertsCard').hidden = false;
+    document.getElementById('alertsBody').innerHTML = allAlerts.map(({ project, doc, alert }) => `
+      <tr class="${alert.level === 'danger' ? 'row-danger' : 'row-warn'}">
+        <td><a href="proyecto.html?id=${project.id}">${escapeHtml(project.name)}</a></td>
+        <td>${escapeHtml(doc.client_doc_no || doc.vendor_doc_no || '-')}</td>
+        <td>${escapeHtml(doc.title)}</td>
+        <td>${doc.current_revision}</td>
+        <td>${doc.current_status ? escapeHtml(doc.current_status) : '-'}</td>
+        <td>${escapeHtml(alert.reason)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // --- nuevo proyecto ---
+  const modal = document.getElementById('newProjectModal');
+  document.getElementById('newProjectBtn').addEventListener('click', () => modal.hidden = false);
+  document.getElementById('cancelNewProject').addEventListener('click', () => modal.hidden = true);
+
+  document.getElementById('newProjectForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    payload.review_days = parseInt(payload.review_days || '15', 10);
+    payload.created_by = session.user.id;
+    const { data: newProj, error } = await supabase.from('projects').insert(payload).select().single();
+    const errEl = document.getElementById('newProjectErr');
+    if (error) {
+      errEl.textContent = error.message;
+      errEl.hidden = false;
+      return;
+    }
+    // el creador se anade automaticamente como miembro
+    await supabase.from('project_members').insert({ project_id: newProj.id, user_id: session.user.id });
+    window.location.href = `proyecto.html?id=${newProj.id}`;
+  });
+}
+</script>
+</body>
+</html>
