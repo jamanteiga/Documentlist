@@ -8,33 +8,35 @@ Roles: **ADMIN** (todo, incluye borrar y administración), **EDITOR** (crear/edi
 
 ---
 
-## 1. Crear el proyecto en Supabase
+## 1. Usar el mismo proyecto Supabase que ESTRUCTURA
 
-1. Entra en [supabase.com](https://supabase.com) → **New project**.
-2. Elige nombre, contraseña de base de datos y región (Europe recomendable). Espera a que se aprovisione (~2 min).
-3. Menú lateral → **SQL Editor** → **New query**.
-4. Pega el contenido completo de `schema.sql` (incluido en esta carpeta) y pulsa **Run**.
-   - Esto crea las tablas, la vista de estado y las políticas de seguridad (RLS), y precarga los códigos de estado habituales (A, B, C, R, I, PC, PR).
+Si ya tienes tus dos proyectos gratuitos de Supabase ocupados (REGHOR y ESTRUCTURA), GESDOC no necesita uno nuevo: sus tablas viven en su **propio esquema de Postgres** llamado `gesdoc` (no `public`), así que conviven en el mismo proyecto que ESTRUCTURA sin tocar ni una tabla suya.
+
+1. Entra en tu proyecto Supabase de **ESTRUCTURA**.
+2. Menú lateral → **SQL Editor** → **New query**.
+3. Pega el contenido completo de `schema.sql` (incluido en esta carpeta) y pulsa **Run**.
+   - Crea el esquema `gesdoc` con sus propias tablas, vista y políticas de seguridad (RLS), separado de las de ESTRUCTURA, y precarga los códigos de estado habituales (A, B, C, R, I, PC, PR).
+4. **Imprescindible** — Menú lateral → **Project Settings** (icono de engranaje) → **Data API** → busca **"Exposed schemas"** → añade `gesdoc` a la lista (junto a `public`) → guarda.
+   - Sin este paso la app no podrá leer ni escribir nada: por defecto Supabase solo expone el esquema `public` a través de la API.
 
 ## 2. Conectar la app a tu proyecto
 
-1. Menú lateral → **Project Settings** (icono de engranaje) → **Data API**.
-2. Copia la **Project URL** y la clave **anon public** (en "API Keys").
-3. Abre `config.js` en esta carpeta y sustituye:
+1. En el mismo sitio (**Project Settings** → **Data API**), copia la **Project URL** y la clave **anon public** (en "API Keys") — son las mismas que usa ESTRUCTURA, no hace falta buscar otras.
+2. Abre `config.js` en esta carpeta y sustituye:
    ```js
    export const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
    export const SUPABASE_ANON_KEY = 'TU-CLAVE-ANON-PUBLICA';
    ```
+   (`js/db.js` ya está configurado para que todas las consultas de GESDOC apunten al esquema `gesdoc`, así que no hace falta tocar nada más.)
 
 ## 3. Crear el primer usuario (ADMIN)
 
-1. Menú lateral → **Authentication** → **Users** → **Add user** → **Create new user**.
-   - Rellena email y contraseña, y marca "Auto Confirm User" para que pueda entrar sin verificar el email.
-2. Menú lateral → **Table Editor** → tabla `profiles` → busca la fila con tu email → columna `role` → cámbiala a `ADMIN`.
-   - Alternativa por SQL (SQL Editor): `update public.profiles set role = 'ADMIN' where email = 'tu-email@dominio.com';`
-3. Los siguientes usuarios los das de alta igual (Authentication → Users → Add user); entrarán con rol `VIEWER` por defecto y tú les subes el rol desde la pestaña **Administración** de la app.
+Como GESDOC comparte proyecto Supabase con ESTRUCTURA, **comparte también sus usuarios** (la tabla `auth.users` es una sola por proyecto): al ejecutar `schema.sql` ya se ha creado automáticamente un perfil de GESDOC (rol `VIEWER`) para cada usuario que ya existía en ESTRUCTURA. Es decir, cualquiera que ya tenga cuenta en ESTRUCTURA puede entrar en GESDOC con el mismo email y contraseña. Si no quieres eso, solo hay dos vías: usar un proyecto Supabase distinto (no es tu caso ahora), o simplemente no subir el rol de esas cuentas más allá de `VIEWER` y no añadirlas como miembros de ningún proyecto (así entran pero no ven nada).
 
-> Nota: por defecto Supabase pide confirmar el email al darse de alta. Como los usuarios los crea el administrador manualmente (no hay registro público en la app), marca siempre "Auto Confirm User" al crearlos y no hace falta tocar nada más.
+1. Si tu propio email ya existe en ESTRUCTURA, ya tienes perfil en GESDOC (rol `VIEWER`); solo falta subirlo a ADMIN — ver paso 2. Si es un email nuevo: menú lateral → **Authentication** → **Users** → **Add user** → **Create new user** (marca "Auto Confirm User" para que pueda entrar sin verificar el email).
+2. Menú lateral → **Table Editor** → arriba a la izquierda, el desplegable de esquema (pone `public`) → cámbialo a **`gesdoc`** → tabla `profiles` → busca la fila con tu email → columna `role` → cámbiala a `ADMIN`.
+   - Alternativa por SQL (SQL Editor): `update gesdoc.profiles set role = 'ADMIN' where email = 'tu-email@dominio.com';`
+3. Los siguientes usuarios nuevos los das de alta igual (Authentication → Users → Add user); entrarán con rol `VIEWER` por defecto y tú les subes el rol desde la pestaña **Administración** de la app.
 
 ## 4. Publicar en GitHub Pages
 
