@@ -190,7 +190,11 @@ create policy "profiles_update_self" on gesdoc.profiles for update using (id = a
 create or replace function gesdoc.protect_profile_role()
 returns trigger as $$
 begin
-  if not gesdoc.is_admin() and new.role is distinct from old.role then
+  -- Solo se aplica si hay un usuario autenticado real detras del cambio
+  -- (auth.uid() no nulo). Sin esto, ejecutar el UPDATE inicial desde el
+  -- SQL Editor (sin JWT, auth.uid() = null) se interpretaria como "no
+  -- admin" y deshacia el propio cambio a ADMIN.
+  if auth.uid() is not null and not gesdoc.is_admin() and new.role is distinct from old.role then
     new.role := old.role;
   end if;
   return new;

@@ -39,6 +39,10 @@ export function renderTopbar(profile, activePage) {
   const adminLink = profile && profile.role === 'ADMIN'
     ? `<a href="admin.html" class="${activePage === 'admin' ? 'active' : ''}">Administracion</a>`
     : '';
+  // Mostrar solo el nombre de usuario (antes de la @), no el email completo.
+  const displayName = profile
+    ? (profile.full_name || (profile.email ? profile.email.split('@')[0] : ''))
+    : '';
   el.innerHTML = `
     <div class="brand">GESDOC</div>
     <nav>
@@ -46,7 +50,7 @@ export function renderTopbar(profile, activePage) {
       ${adminLink}
     </nav>
     <div class="user">
-      <span>${profile ? (profile.full_name || profile.email) : ''}</span>
+      <span>${displayName}</span>
       <span class="badge outline" style="color:#6b7280;border-color:#d1d5db;">${profile ? profile.role : ''}</span>
       <button class="btn small" id="logoutBtn">Salir</button>
     </div>
