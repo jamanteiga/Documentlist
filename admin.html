@@ -107,7 +107,7 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 // ---------------- USUARIOS ----------------
 let allProfiles = [];
 async function loadUsers() {
-  const { data } = await supabase.from('profiles').select('*').order('email');
+  const { data } = await supabase.from('usuarios_gesdoc').select('*').order('email');
   allProfiles = data || [];
   document.getElementById('usersBody').innerHTML = allProfiles.map(p => `
     <tr>
@@ -124,7 +124,7 @@ async function loadUsers() {
   `).join('');
   document.querySelectorAll('.roleSelect').forEach(sel => {
     sel.addEventListener('change', async () => {
-      await supabase.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.user);
+      await supabase.from('usuarios_gesdoc').update({ role: sel.value }).eq('id', sel.dataset.user);
       await loadUsers();
       await loadTeamMembers();
     });
@@ -146,13 +146,13 @@ async function loadTeamMembers() {
   if (!projectId) return;
   const { data: members } = await supabase
     .from('project_members')
-    .select('user_id, profiles(email, role)')
+    .select('user_id, usuarios_gesdoc(email, role)')
     .eq('project_id', projectId);
 
   document.getElementById('teamMembersBody').innerHTML = (members || []).map(m => `
     <tr>
-      <td>${escapeHtml(m.profiles?.email || '-')}</td>
-      <td>${escapeHtml(m.profiles?.role || '-')}</td>
+      <td>${escapeHtml(m.usuarios_gesdoc?.email || '-')}</td>
+      <td>${escapeHtml(m.usuarios_gesdoc?.role || '-')}</td>
       <td><button class="btn small danger" data-remove="${m.user_id}">Quitar</button></td>
     </tr>
   `).join('') || '<tr><td colspan="3" class="empty">Sin miembros</td></tr>';

@@ -13,7 +13,7 @@ create extension if not exists "pgcrypto";
 create schema if not exists gesdoc;
 
 -- ---------- PERFILES / ROLES ----------
-create table if not exists gesdoc.profiles (
+create table if not exists gesdoc.usuarios_gesdoc (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   full_name text,
@@ -24,7 +24,7 @@ create table if not exists gesdoc.profiles (
 create or replace function gesdoc.handle_new_user()
 returns trigger as $$
 begin
-  insert into gesdoc.profiles (id, email, role)
+  insert into gesdoc.usuarios_gesdoc (id, email, role)
   values (new.id, new.email, 'VIEWER')
   on conflict (id) do nothing;
   return new;
@@ -38,12 +38,10 @@ create trigger on_auth_user_created_gesdoc
   after insert on auth.users
   for each row execute procedure gesdoc.handle_new_user();
 
--- El trigger de arriba solo dispara con usuarios NUEVOS. Como este proyecto
--- ya tenia usuarios (los de ESTRUCTURA), esto les crea su perfil de GESDOC
--- (rol VIEWER por defecto) para que puedan entrar con la misma cuenta.
-insert into gesdoc.profiles (id, email, role)
-select id, email, 'VIEWER' from auth.users
-on conflict (id) do nothing;
+-- A proposito NO se copian aqui los usuarios que ya existieran en auth.users
+-- (p.ej. los de ESTRUCTURA): los usuarios de GESDOC son independientes y se
+-- dan de alta uno a uno (Authentication > Users > Add user) con el email que
+-- quieras, distinto al de cualquier otra app que comparta este proyecto.
 
 -- ---------- PROYECTOS ----------
 create table if not exists gesdoc.projects (
@@ -56,13 +54,13 @@ create table if not exists gesdoc.projects (
   model text,
   review_days integer not null default 15,
   status text not null default 'ACTIVO' check (status in ('ACTIVO','CERRADO')),
-  created_by uuid references gesdoc.profiles(id),
+  created_by uuid references gesdoc.usuarios_gesdoc(id),
   created_at timestamptz not null default now()
 );
 
 create table if not exists gesdoc.project_members (
   project_id uuid references gesdoc.projects(id) on delete cascade,
-  user_id uuid references gesdoc.profiles(id) on delete cascade,
+  user_id uuid references gesdoc.usuarios_gesdoc(id) on delete cascade,
   primary key (project_id, user_id)
 );
 
@@ -109,7 +107,7 @@ create table if not exists gesdoc.transmittals (
   transmittal_date date not null default current_date,
   counterparty text,
   notes text,
-  created_by uuid references gesdoc.profiles(id),
+  created_by uuid references gesdoc.usuarios_gesdoc(id),
   created_at timestamptz not null default now(),
   unique (project_id, direction, transmittal_no)
 );
@@ -153,7 +151,7 @@ left join lateral (
 ) le on true;
 
 -- ============ ROW LEVEL SECURITY ============
-alter table gesdoc.profiles enable row level security;
+alter table gesdoc.usuarios_gesdoc enable row level security;
 alter table gesdoc.projects enable row level security;
 alter table gesdoc.project_members enable row level security;
 alter table gesdoc.status_codes enable row level security;
@@ -164,7 +162,7 @@ alter table gesdoc.document_events enable row level security;
 
 create or replace function gesdoc.is_admin()
 returns boolean as $$
-  select exists (select 1 from gesdoc.profiles where id = auth.uid() and role = 'ADMIN');
+  select exists (select 1 from gesdoc.usuarios_gesdoc where id = auth.uid() and role = 'ADMIN');
 $$ language sql stable security definer;
 
 create or replace function gesdoc.is_project_member(pid uuid)
@@ -176,13 +174,13 @@ $$ language sql stable security definer;
 
 create or replace function gesdoc.can_edit()
 returns boolean as $$
-  select exists (select 1 from gesdoc.profiles where id = auth.uid() and role in ('ADMIN','EDITOR'));
+  select exists (select 1 from gesdoc.usuarios_gesdoc where id = auth.uid() and role in ('ADMIN','EDITOR'));
 $$ language sql stable security definer;
 
 -- profiles
-create policy "profiles_select_own_or_admin" on gesdoc.profiles for select using (id = auth.uid() or gesdoc.is_admin());
-create policy "profiles_update_admin" on gesdoc.profiles for update using (gesdoc.is_admin());
-create policy "profiles_update_self" on gesdoc.profiles for update using (id = auth.uid());
+create policy "profiles_select_own_or_admin" on gesdoc.usuarios_gesdoc for select using (id = auth.uid() or gesdoc.is_admin());
+create policy "profiles_update_admin" on gesdoc.usuarios_gesdoc for update using (gesdoc.is_admin());
+create policy "profiles_update_self" on gesdoc.usuarios_gesdoc for update using (id = auth.uid());
 
 -- Aunque la politica anterior permite a cualquiera actualizar su propia fila
 -- (para editar full_name), este trigger impide que alguien se auto-asigne
@@ -201,9 +199,9 @@ begin
 end;
 $$ language plpgsql security definer;
 
-drop trigger if exists trg_protect_profile_role on gesdoc.profiles;
+drop trigger if exists trg_protect_profile_role on gesdoc.usuarios_gesdoc;
 create trigger trg_protect_profile_role
-  before update on gesdoc.profiles
+  before update on gesdoc.usuarios_gesdoc
   for each row execute procedure gesdoc.protect_profile_role();
 
 -- projects
@@ -277,7 +275,7 @@ alter default privileges in schema gesdoc grant all on routines to anon, authent
 --    podra leer/escribir nada aunque el script se haya ejecutado bien.
 --
 -- 2) Conviertete en ADMIN (SQL Editor, nueva query):
---    update gesdoc.profiles set role = 'ADMIN' where email = 'TU-EMAIL@dominio.com';
+--    update gesdoc.usuarios_gesdoc set role = 'ADMIN' where email = 'TU-EMAIL@dominio.com';
 --    (tu fila aparece automaticamente en cuanto inicias sesion una vez
 --    en la app, o en cuanto se crea tu usuario en Authentication > Users)
 -- ============================================================

@@ -15,7 +15,7 @@ export async function getProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data, error } = await supabase
-    .from('profiles')
+    .from('usuarios_gesdoc')
     .select('*')
     .eq('id', user.id)
     .single();

@@ -31,12 +31,18 @@ Si ya tienes tus dos proyectos gratuitos de Supabase ocupados (REGHOR y ESTRUCTU
 
 ## 3. Crear el primer usuario (ADMIN)
 
-Como GESDOC comparte proyecto Supabase con ESTRUCTURA, **comparte también sus usuarios** (la tabla `auth.users` es una sola por proyecto): al ejecutar `schema.sql` ya se ha creado automáticamente un perfil de GESDOC (rol `VIEWER`) para cada usuario que ya existía en ESTRUCTURA. Es decir, cualquiera que ya tenga cuenta en ESTRUCTURA puede entrar en GESDOC con el mismo email y contraseña. Si no quieres eso, solo hay dos vías: usar un proyecto Supabase distinto (no es tu caso ahora), o simplemente no subir el rol de esas cuentas más allá de `VIEWER` y no añadirlas como miembros de ningún proyecto (así entran pero no ven nada).
+GESDOC guarda sus perfiles (rol, etc.) en su propia tabla `gesdoc.usuarios_gesdoc`, **sin copiar ni tocar** la tabla de usuarios de ESTRUCTURA. Lo único que comparten a nivel técnico es el motor de login de Supabase (`auth.users` es una sola tabla por proyecto), pero eso no mezcla cuentas: si das de alta un email que no sea el que usas en ESTRUCTURA, es una cuenta totalmente aparte, con su propia contraseña, invisible para ESTRUCTURA.
 
-1. Si tu propio email ya existe en ESTRUCTURA, ya tienes perfil en GESDOC (rol `VIEWER`); solo falta subirlo a ADMIN — ver paso 2. Si es un email nuevo: menú lateral → **Authentication** → **Users** → **Add user** → **Create new user** (marca "Auto Confirm User" para que pueda entrar sin verificar el email).
-2. Menú lateral → **Table Editor** → arriba a la izquierda, el desplegable de esquema (pone `public`) → cámbialo a **`gesdoc`** → tabla `profiles` → busca la fila con tu email → columna `role` → cámbiala a `ADMIN`.
-   - Alternativa por SQL (SQL Editor): `update gesdoc.profiles set role = 'ADMIN' where email = 'tu-email@dominio.com';`
-3. Los siguientes usuarios nuevos los das de alta igual (Authentication → Users → Add user); entrarán con rol `VIEWER` por defecto y tú les subes el rol desde la pestaña **Administración** de la app.
+1. Menú lateral → **Authentication** → **Users** → **Add user** → **Create new user**. Usa un email dedicado a GESDOC (puede ser tu email real, o uno inventado tipo `admin@gesdoc.local` — lo que prefieras, mientras no coincida con ninguna cuenta ya existente). Marca **"Auto Confirm User"** para poder entrar sin verificar el email.
+   - Esto crea automáticamente tu fila en `gesdoc.usuarios_gesdoc` con rol `VIEWER` (vía trigger).
+2. Súbete a ADMIN — SQL Editor:
+   ```sql
+   update gesdoc.usuarios_gesdoc set role = 'ADMIN' where email = 'el-email-que-usaste';
+   ```
+   (o Table Editor → esquema `gesdoc` → tabla `usuarios_gesdoc` → tu fila → columna `role` → `ADMIN`)
+3. Los siguientes usuarios de GESDOC los das de alta igual (Authentication → Users → Add user, con el email que quieras para cada uno); entrarán con rol `VIEWER` por defecto y tú les subes el rol desde la pestaña **Administración** de la app.
+
+> Si vienes de una instalación anterior donde `usuarios_gesdoc` se llamaba `profiles` y tenía cuentas prestadas de ESTRUCTURA, ejecuta primero `migracion_usuarios_gesdoc.sql` (incluido en esta carpeta) para renombrar la tabla y limpiar esas cuentas.
 
 ## 4. Publicar en GitHub Pages
 
