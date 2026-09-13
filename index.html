@@ -13,8 +13,8 @@
     <div class="brand">GESDOC</div>
     <div class="subtitle">Control documental de proyectos</div>
     <form id="loginForm">
-      <label for="email">Email</label>
-      <input type="email" id="email" required autocomplete="username">
+      <label for="email">Usuario</label>
+      <input type="text" id="email" required autocomplete="username" placeholder="jmanteiga">
       <label for="password">Contrasena</label>
       <input type="password" id="password" required autocomplete="current-password">
       <button type="submit" class="btn primary" style="width:100%;margin-top:16px;">Entrar</button>
@@ -29,6 +29,7 @@
 <script type="module">
 import './js/pwa.js';
 import { supabase } from './js/db.js';
+import { USERNAME_DOMAIN_SUFFIX } from './config.js';
 
 // Si ya hay sesion activa, ir directo al panel.
 const { data: { session } } = await supabase.auth.getSession();
@@ -36,7 +37,8 @@ if (session) window.location.href = 'dashboard.html';
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const email = document.getElementById('email').value.trim();
+  let email = document.getElementById('email').value.trim();
+  if (email && !email.includes('@')) email += USERNAME_DOMAIN_SUFFIX;
   const password = document.getElementById('password').value;
   const errEl = document.getElementById('errMsg');
   errEl.hidden = true;
